@@ -31,8 +31,8 @@ def load_documents_from_path(data_path: str, glob_pattern: str = "*.md"):
 
 def split_text(documents: list[Document]):
     text_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=300,
-        chunk_overlap=100,
+        chunk_size=500,
+        chunk_overlap=150,
         length_function=len,
         add_start_index=True,
     )

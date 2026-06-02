@@ -10,9 +10,10 @@ class IngestRequest(BaseModel):
 
 class QueryRequest(BaseModel):
     query_text: str
-    k: int = 3
-    min_relevance: float = 0.7
+    k: int = 6
+    min_relevance: float = 0.5
     context_tag: Optional[str] = None
+    language: str = "English"
 
 
 class QueryResponse(BaseModel):

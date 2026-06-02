@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi import File, Query, UploadFile
 from langchain.schema import Document
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
-from langchain.prompts import ChatPromptTemplate
+from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
 from create_database import (
     load_documents,
     split_text,
@@ -11,7 +11,7 @@ from create_database import (
     set_context_tag,
 )
 from models import QueryRequest, QueryResponse, IndexResponse
-from query_data import PROMPT_TEMPLATE
+from query_data import SYSTEM_TEMPLATE, PROMPT_TEMPLATE
 from vector_store import create_vector_store, get_collection_name, extract_content_from_bytes
 
 
@@ -64,10 +64,16 @@ def query(request: QueryRequest):
         if len(results) == 0 or results[0][1] < request.min_relevance:
             raise HTTPException(status_code=404, detail="Unable to find matching results.")
         context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
-        prompt = ChatPromptTemplate.from_template(PROMPT_TEMPLATE).format(
-            context=context_text, question=request.query_text
+        chat_prompt = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(SYSTEM_TEMPLATE),
+            HumanMessagePromptTemplate.from_template(PROMPT_TEMPLATE),
+        ])
+        messages = chat_prompt.format_messages(
+            language=request.language,
+            context=context_text,
+            question=request.query_text,
         )
-        response_text = ChatOpenAI().invoke(prompt).content
+        response_text = ChatOpenAI().invoke(messages).content
         sources = [doc.metadata.get("source", "") for doc, _score in results]
         return QueryResponse(response=response_text, sources=sources)
     except HTTPException:
