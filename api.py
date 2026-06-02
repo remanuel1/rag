@@ -81,7 +81,7 @@ def query(request: QueryRequest):
             context=context_text,
             question=request.query_text,
         )
-        response_text = ChatOpenAI().invoke(messages).content
+        response_text = ChatOpenAI(model="gpt-4o-mini").invoke(messages).content
         sources = [doc.metadata.get("source", "") for doc, _score in results]
         return QueryResponse(response=response_text, sources=sources)
     except HTTPException:
