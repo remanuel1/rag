@@ -1,1 +1,20 @@
+# Environment
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# PyCharm
+.idea/
+
+# Data files (personal info)
+data/
+
+# OS
 .DS_Store
+Thumbs.db
