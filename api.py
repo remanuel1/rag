@@ -1,6 +1,7 @@
 import json
 from fastapi import FastAPI, HTTPException
 from fastapi import File, Query, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from langchain.schema import Document
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
 from langchain.prompts import ChatPromptTemplate, SystemMessagePromptTemplate, HumanMessagePromptTemplate
@@ -16,6 +17,13 @@ from vector_store import create_vector_store, get_collection_name, extract_conte
 
 
 app = FastAPI(title="RAG API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.post("/index", response_model=IndexResponse)
