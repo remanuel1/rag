@@ -25,3 +25,17 @@ class IndexResponse(BaseModel):
     documents: int
     chunks: int
     collection: str
+
+
+class AvatarQueryRequest(BaseModel):
+    query_text: str
+    k: int = 6
+    min_relevance: float = 0.5
+    context_tag: Optional[str] = None
+    language: str = "Hebrew"
+
+
+class AvatarQueryResponse(BaseModel):
+    response: str
+    video_url: str
+    sources: list[str]

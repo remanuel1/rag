@@ -11,7 +11,8 @@ from create_database import (
     save_to_pgvector,
     set_context_tag,
 )
-from models import QueryRequest, QueryResponse, IndexResponse
+from models import QueryRequest, QueryResponse, IndexResponse, AvatarQueryRequest, AvatarQueryResponse
+from did_service import create_talk, wait_for_talk
 from query_data import SYSTEM_TEMPLATE, PROMPT_TEMPLATE
 from vector_store import create_vector_store, get_collection_name, extract_content_from_bytes
 
@@ -84,6 +85,39 @@ def query(request: QueryRequest):
         response_text = ChatOpenAI(model="gpt-4o-mini").invoke(messages).content
         sources = [doc.metadata.get("source", "") for doc, _score in results]
         return QueryResponse(response=response_text, sources=sources)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/avatar-query", response_model=AvatarQueryResponse)
+def avatar_query(request: AvatarQueryRequest):
+    try:
+        db = create_vector_store(OpenAIEmbeddings())
+        query_filter = {"context_tag": request.context_tag} if request.context_tag else None
+        results = db.similarity_search_with_relevance_scores(
+            request.query_text,
+            k=request.k,
+            filter=query_filter,
+        )
+        if len(results) == 0 or results[0][1] < request.min_relevance:
+            raise HTTPException(status_code=404, detail="Unable to find matching results.")
+        context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+        chat_prompt = ChatPromptTemplate.from_messages([
+            SystemMessagePromptTemplate.from_template(SYSTEM_TEMPLATE),
+            HumanMessagePromptTemplate.from_template(PROMPT_TEMPLATE),
+        ])
+        messages = chat_prompt.format_messages(
+            language=request.language,
+            context=context_text,
+            question=request.query_text,
+        )
+        response_text = ChatOpenAI(model="gpt-4o-mini").invoke(messages).content
+        talk_id = create_talk(response_text, language=request.language)
+        video_url = wait_for_talk(talk_id)
+        sources = [doc.metadata.get("source", "") for doc, _score in results]
+        return AvatarQueryResponse(response=response_text, video_url=video_url, sources=sources)
     except HTTPException:
         raise
     except Exception as exc:
