@@ -12,4 +12,4 @@ RUN pip install --no-cache-dir --upgrade pip && \
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "python -c 'from vector_store import create_vector_store; create_vector_store()' && uvicorn api:app --host 0.0.0.0 --port 8000 --reload --reload-dir /app"]
+CMD ["sh", "-c", "python -c 'from vector_store import create_vector_store; create_vector_store()' && uvicorn api:app --host 0.0.0.0 --port 8000"]

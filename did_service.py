@@ -52,10 +52,11 @@ async def create_talk(text: str, language: str = "Hebrew") -> str:
         return response.json()["id"]
 
 
-async def wait_for_talk(talk_id: str, timeout: int = 300, poll_interval: float = 5.0) -> str:
+async def wait_for_talk(talk_id: str, timeout: int = 60, poll_interval: float = 2.0) -> str:
     async with httpx.AsyncClient() as client:
+        elapsed = 0.0
 
-        for _ in range(int(timeout / poll_interval)):
+        while elapsed < timeout:
             response = await client.get(
                 f"{DID_API_URL}/talks/{talk_id}",
                 headers=_get_headers(),
@@ -69,6 +70,8 @@ async def wait_for_talk(talk_id: str, timeout: int = 300, poll_interval: float =
                 return data["result_url"]
             if status == "error":
                 raise RuntimeError(f"D-ID failed: {data.get('error', {})}")
+
             await asyncio.sleep(poll_interval)
+            elapsed += poll_interval
 
         raise TimeoutError(f"D-ID talk {talk_id} did not complete within {timeout}s")
