@@ -92,7 +92,7 @@ def query(request: QueryRequest):
 
 
 @app.post("/avatar-query", response_model=AvatarQueryResponse)
-def avatar_query(request: AvatarQueryRequest):
+async def avatar_query(request: AvatarQueryRequest):
     try:
         db = create_vector_store(OpenAIEmbeddings())
         query_filter = {"context_tag": request.context_tag} if request.context_tag else None
@@ -113,9 +113,14 @@ def avatar_query(request: AvatarQueryRequest):
             context=context_text,
             question=request.query_text,
         )
-        response_text = ChatOpenAI(model="gpt-4o-mini").invoke(messages).content
-        talk_id = create_talk(response_text, language=request.language)
-        video_url = wait_for_talk(talk_id)
+        response_text = ChatOpenAI(
+            model="gpt-4o-mini",
+            max_tokens=150,
+        ).invoke(messages).content
+        print(f"DEBUG - response_text: '{response_text}'")
+        print(f"DEBUG - length: {len(response_text)}")
+        talk_id = await create_talk(response_text, language=request.language)
+        video_url = await wait_for_talk(talk_id)
         sources = [doc.metadata.get("source", "") for doc, _score in results]
         return AvatarQueryResponse(response=response_text, video_url=video_url, sources=sources)
     except HTTPException:
