@@ -52,7 +52,7 @@ async def create_talk(text: str, language: str = "Hebrew") -> str:
         return response.json()["id"]
 
 
-async def wait_for_talk(talk_id: str, timeout: int = 60, poll_interval: float = 2.0) -> str:
+async def wait_for_talk(talk_id: str, timeout: int = 120, poll_interval: float = 2.0) -> str:
     async with httpx.AsyncClient() as client:
         elapsed = 0.0
 
