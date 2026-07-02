@@ -1,4 +1,5 @@
 import json
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi import File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -11,8 +12,8 @@ from create_database import (
     save_to_pgvector,
     set_context_tag,
 )
-from models import QueryRequest, QueryResponse, IndexResponse, AvatarQueryRequest, AvatarQueryResponse
-from did_service import create_talk, wait_for_talk
+from models import IndexResponse, IngestRequest, AvatarQueryRequest, AvatarQueryResponse, AvatarStatusResponse
+from did_service import create_talk, wait_for_talk, DID_API_URL, _get_headers
 from query_data import SYSTEM_TEMPLATE, PROMPT_TEMPLATE
 from vector_store import create_vector_store, get_collection_name, extract_content_from_bytes
 
@@ -59,7 +60,7 @@ def index_documents(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-
+'''
 @app.post("/query", response_model=QueryResponse)
 def query(request: QueryRequest):
     try:
@@ -89,7 +90,7 @@ def query(request: QueryRequest):
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-
+'''
 
 @app.post("/avatar-query", response_model=AvatarQueryResponse)
 async def avatar_query(request: AvatarQueryRequest):
@@ -120,9 +121,31 @@ async def avatar_query(request: AvatarQueryRequest):
         print(f"DEBUG - response_text: '{response_text}'")
         print(f"DEBUG - length: {len(response_text)}")
         talk_id = await create_talk(response_text, language=request.language)
-        video_url = await wait_for_talk(talk_id)
         sources = [doc.metadata.get("source", "") for doc, _score in results]
-        return AvatarQueryResponse(response=response_text, video_url=video_url, sources=sources)
+        return AvatarQueryResponse(response=response_text, talk_id=talk_id, sources=sources)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.get("/avatar-status/{talk_id}", response_model=AvatarStatusResponse)
+async def avatar_status(talk_id: str):
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{DID_API_URL}/talks/{talk_id}",
+                headers=_get_headers(),
+                timeout=15,
+            )
+            response.raise_for_status()
+            data = response.json()
+            status = data.get("status")
+            if status == "done":
+                return AvatarStatusResponse(status="done", video_url=data["result_url"])
+            elif status == "error":
+                raise HTTPException(status_code=500, detail="D-ID failed to generate video")
+            else:
+                return AvatarStatusResponse(status=status, video_url=None)
     except HTTPException:
         raise
     except Exception as exc:

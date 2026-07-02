@@ -8,19 +8,6 @@ class IngestRequest(BaseModel):
     context_tag: Optional[str] = None
 
 
-class QueryRequest(BaseModel):
-    query_text: str
-    k: int = 6
-    min_relevance: float = 0.5
-    context_tag: Optional[str] = None
-    language: str = "English"
-
-
-class QueryResponse(BaseModel):
-    response: str
-    sources: list[str]
-
-
 class IndexResponse(BaseModel):
     documents: int
     chunks: int
@@ -37,5 +24,9 @@ class AvatarQueryRequest(BaseModel):
 
 class AvatarQueryResponse(BaseModel):
     response: str
-    video_url: str
+    talk_id: str
     sources: list[str]
+
+class AvatarStatusResponse(BaseModel):
+    status: str
+    video_url: Optional[str] = None
