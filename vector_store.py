@@ -9,8 +9,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_postgres import PGVector
 from pypdf import PdfReader
 
-load_dotenv()
-
+load_dotenv(override=False)
 
 def get_pgvector_connection() -> str:
     direct = os.getenv("PGVECTOR_CONNECTION")
