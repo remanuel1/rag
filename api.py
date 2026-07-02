@@ -22,7 +22,7 @@ app = FastAPI(title="RAG API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["https://renana-friedman.up.railway.app/"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
