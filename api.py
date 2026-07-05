@@ -1,5 +1,4 @@
 import json
-import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi import File, Query, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,8 +11,14 @@ from create_database import (
     save_to_pgvector,
     set_context_tag,
 )
-from models import IndexResponse, IngestRequest, AvatarQueryRequest, AvatarQueryResponse, AvatarStatusResponse
-from did_service import create_talk, wait_for_talk, DID_API_URL, _get_headers
+from models import (
+    IndexResponse, IngestRequest,
+    StreamStartResponse, StreamSdpRequest, StreamIceRequest,
+    StreamSendTextRequest, StreamSendTextResponse, StreamCloseRequest, StreamSpeakRequest,
+)
+from did_service import (
+    create_stream, send_sdp_answer, send_ice_candidate, send_stream_text, close_stream,
+)
 from query_data import SYSTEM_TEMPLATE, PROMPT_TEMPLATE
 from vector_store import create_vector_store, get_collection_name, extract_content_from_bytes
 
@@ -60,93 +65,120 @@ def index_documents(
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-'''
-@app.post("/query", response_model=QueryResponse)
-def query(request: QueryRequest):
+
+def _run_rag_and_llm(query_text: str, k: int, min_relevance: float, context_tag: str | None, language: str) -> tuple[str, list[str]]:
+    """לוגיקת ה-RAG+LLM המשותפת - בשימוש ע"י /stream/send-text."""
+    db = create_vector_store(OpenAIEmbeddings())
+    query_filter = {"context_tag": context_tag} if context_tag else None
+    results = db.similarity_search_with_relevance_scores(
+        query_text,
+        k=k,
+        filter=query_filter,
+    )
+    if len(results) == 0 or results[0][1] < min_relevance:
+        raise HTTPException(status_code=404, detail="Unable to find matching results.")
+    context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+    chat_prompt = ChatPromptTemplate.from_messages([
+        SystemMessagePromptTemplate.from_template(SYSTEM_TEMPLATE),
+        HumanMessagePromptTemplate.from_template(PROMPT_TEMPLATE),
+    ])
+    messages = chat_prompt.format_messages(
+        language=language,
+        context=context_text,
+        question=query_text,
+    )
+    response_text = ChatOpenAI(
+        model="gpt-4o-mini",
+        max_tokens=150,
+    ).invoke(messages).content
+    sources = [doc.metadata.get("source", "") for doc, _score in results]
+    return response_text, sources
+
+
+# ---------------------------------------------------------------------------
+# Streams API (WebRTC) - תגובה מהירה בזמן אמת
+# ---------------------------------------------------------------------------
+
+@app.post("/stream/start", response_model=StreamStartResponse)
+async def stream_start():
+    """
+    נקרא פעם אחת כשהמשתמש פותח את הצ'אט.
+    פותח stream חדש מול D-ID ומחזיר לפרונט את מה שהוא צריך כדי להשלים
+    את משא-ומתן ה-WebRTC (SDP offer + ICE servers).
+    """
     try:
-        db = create_vector_store(OpenAIEmbeddings())
-        query_filter = {"context_tag": request.context_tag} if request.context_tag else None
-        results = db.similarity_search_with_relevance_scores(
-            request.query_text,
-            k=request.k,
-            filter=query_filter,
+        data = await create_stream()
+        return StreamStartResponse(
+            stream_id=data["id"],
+            session_id=data["session_id"],
+            offer=data["offer"],
+            ice_servers=data["ice_servers"],
         )
-        if len(results) == 0 or results[0][1] < request.min_relevance:
-            raise HTTPException(status_code=404, detail="Unable to find matching results.")
-        context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
-        chat_prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(SYSTEM_TEMPLATE),
-            HumanMessagePromptTemplate.from_template(PROMPT_TEMPLATE),
-        ])
-        messages = chat_prompt.format_messages(
-            language=request.language,
-            context=context_text,
-            question=request.query_text,
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/stream/sdp")
+async def stream_sdp(request: StreamSdpRequest):
+    """הפרונט קורא לזה אחרי שהדפדפן יצר SDP answer, כדי לסגור את משא-ומתן ה-WebRTC."""
+    try:
+        await send_sdp_answer(request.stream_id, request.session_id, request.answer)
+        return {"ok": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/stream/ice")
+async def stream_ice(request: StreamIceRequest):
+    """הפרונט קורא לזה בכל ICE candidate שהדפדפן מגלה (חלק ממו״מ ה-WebRTC)."""
+    try:
+        await send_ice_candidate(
+            request.stream_id, request.session_id,
+            request.candidate, request.sdpMid, request.sdpMLineIndex,
         )
-        response_text = ChatOpenAI(model="gpt-4o-mini").invoke(messages).content
-        sources = [doc.metadata.get("source", "") for doc, _score in results]
-        return QueryResponse(response=response_text, sources=sources)
+        return {"ok": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/stream/send-text", response_model=StreamSendTextResponse)
+async def stream_send_text(request: StreamSendTextRequest):
+    """
+    נקרא בכל שאלה של המשתמש.
+    עושה RAG+LLM ואז שולח את התשובה ל-stream שכבר פתוח -
+    D-ID משדר את הוידאו ישירות דרך ה-WebRTC הקיים, בלי לחכות לקובץ שלם.
+    """
+    try:
+        response_text, sources = _run_rag_and_llm(
+            request.query_text, request.k, request.min_relevance, request.context_tag, request.language,
+        )
+        await send_stream_text(request.stream_id, request.session_id, response_text, language=request.language)
+        return StreamSendTextResponse(response=response_text, sources=sources)
     except HTTPException:
         raise
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
-'''
 
-@app.post("/avatar-query", response_model=AvatarQueryResponse)
-async def avatar_query(request: AvatarQueryRequest):
+
+@app.post("/stream/speak")
+async def stream_speak(request: StreamSpeakRequest):
+    """
+    משמש לטקסט קבוע כמו ברכת פתיחה - שולח ישירות ל-D-ID בלי RAG+LLM.
+    ה-warm-up הזה חשוב: בלי זה, ה-<video> נשאר שחור עד לשאלה הראשונה
+    כי D-ID לא שולח פריימים לפני שביקשו ממנו "לדבר" משהו.
+    """
     try:
-        db = create_vector_store(OpenAIEmbeddings())
-        query_filter = {"context_tag": request.context_tag} if request.context_tag else None
-        results = db.similarity_search_with_relevance_scores(
-            request.query_text,
-            k=request.k,
-            filter=query_filter,
-        )
-        if len(results) == 0 or results[0][1] < request.min_relevance:
-            raise HTTPException(status_code=404, detail="Unable to find matching results.")
-        context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
-        chat_prompt = ChatPromptTemplate.from_messages([
-            SystemMessagePromptTemplate.from_template(SYSTEM_TEMPLATE),
-            HumanMessagePromptTemplate.from_template(PROMPT_TEMPLATE),
-        ])
-        messages = chat_prompt.format_messages(
-            language=request.language,
-            context=context_text,
-            question=request.query_text,
-        )
-        response_text = ChatOpenAI(
-            model="gpt-4o-mini",
-            max_tokens=150,
-        ).invoke(messages).content
-        print(f"DEBUG - response_text: '{response_text}'")
-        print(f"DEBUG - length: {len(response_text)}")
-        talk_id = await create_talk(response_text, language=request.language)
-        sources = [doc.metadata.get("source", "") for doc, _score in results]
-        return AvatarQueryResponse(response=response_text, talk_id=talk_id, sources=sources)
-    except HTTPException:
-        raise
+        await send_stream_text(request.stream_id, request.session_id, request.text, language=request.language)
+        return {"ok": True}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
-@app.get("/avatar-status/{talk_id}", response_model=AvatarStatusResponse)
-async def avatar_status(talk_id: str):
+
+@app.post("/stream/close")
+async def stream_close(request: StreamCloseRequest):
+    """נקרא כשהמשתמש סוגר את הצ'אט, או אוטומטית אחרי חוסר פעילות - כדי לא לבזבז דקות."""
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.get(
-                f"{DID_API_URL}/talks/{talk_id}",
-                headers=_get_headers(),
-                timeout=15,
-            )
-            response.raise_for_status()
-            data = response.json()
-            status = data.get("status")
-            if status == "done":
-                return AvatarStatusResponse(status="done", video_url=data["result_url"])
-            elif status == "error":
-                raise HTTPException(status_code=500, detail="D-ID failed to generate video")
-            else:
-                return AvatarStatusResponse(status=status, video_url=None)
-    except HTTPException:
-        raise
+        await close_stream(request.stream_id, request.session_id)
+        return {"ok": True}
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
