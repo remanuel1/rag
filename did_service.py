@@ -105,7 +105,7 @@ async def send_stream_text(stream_id: str, session_id: str, text: str, language:
             "input": text,
             "provider": {"type": "microsoft", "voice_id": voice_id},
         },
-        "config": {"fluent": True, "pad_audio": 0.0},
+        "config": {"fluent": True, "pad_audio": 0.0, "stitch": True},
     }
 
     async with httpx.AsyncClient(timeout=30) as client:
