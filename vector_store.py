@@ -10,8 +10,6 @@ from langchain_postgres import PGVector
 from pypdf import PdfReader
 
 load_dotenv(override=False)
-print(f"DEBUG OPENAI KEY EXISTS: {'OPENAI_API_KEY' in os.environ}", flush=True)
-print(f"DEBUG ALL ENV KEYS: {list(os.environ.keys())}", flush=True)
 
 def get_pgvector_connection() -> str:
     direct = os.getenv("PGVECTOR_CONNECTION")
