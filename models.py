@@ -12,7 +12,7 @@ class IndexResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
-# מודלים ל-Streams API (WebRTC)
+# Models for Streams API (WebRTC)
 # ---------------------------------------------------------------------------
 
 class StreamStartResponse(BaseModel):
@@ -57,7 +57,7 @@ class StreamCloseRequest(BaseModel):
 
 
 class StreamSpeakRequest(BaseModel):
-    """שליחת טקסט קבוע (למשל ברכת פתיחה) ישירות לאווטאר, בלי לעבור דרך RAG+LLM."""
+    """Sends static text (e.g. welcome greeting) directly to the avatar, bypassing the RAG+LLM pipeline."""
     stream_id: str
     session_id: str
     text: str

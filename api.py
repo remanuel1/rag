@@ -12,7 +12,7 @@ from create_database import (
     set_context_tag,
 )
 from models import (
-    IndexResponse, IngestRequest,
+    IndexResponse,
     StreamStartResponse, StreamSdpRequest, StreamIceRequest,
     StreamSendTextRequest, StreamSendTextResponse, StreamCloseRequest, StreamSpeakRequest,
 )
@@ -67,7 +67,7 @@ def index_documents(
 
 
 def _run_rag_and_llm(query_text: str, k: int, min_relevance: float, context_tag: str | None, language: str) -> tuple[str, list[str]]:
-    """לוגיקת ה-RAG+LLM המשותפת - בשימוש ע"י /stream/send-text."""
+    """Shared RAG+LLM logic - used by /stream/send-text."""
     db = create_vector_store(OpenAIEmbeddings())
     query_filter = {"context_tag": context_tag} if context_tag else None
     results = db.similarity_search_with_relevance_scores(
@@ -96,15 +96,15 @@ def _run_rag_and_llm(query_text: str, k: int, min_relevance: float, context_tag:
 
 
 # ---------------------------------------------------------------------------
-# Streams API (WebRTC) - תגובה מהירה בזמן אמת
+# Streams API (WebRTC) - Real-time responses
 # ---------------------------------------------------------------------------
 
 @app.post("/stream/start", response_model=StreamStartResponse)
 async def stream_start():
     """
-    נקרא פעם אחת כשהמשתמש פותח את הצ'אט.
-    פותח stream חדש מול D-ID ומחזיר לפרונט את מה שהוא צריך כדי להשלים
-    את משא-ומתן ה-WebRTC (SDP offer + ICE servers).
+    Called once when the user opens the chat.
+    Opens a new stream with D-ID and returns what the frontend needs to complete
+    the WebRTC negotiation (SDP offer + ICE servers).
     """
     try:
         data = await create_stream()
@@ -120,7 +120,7 @@ async def stream_start():
 
 @app.post("/stream/sdp")
 async def stream_sdp(request: StreamSdpRequest):
-    """הפרונט קורא לזה אחרי שהדפדפן יצר SDP answer, כדי לסגור את משא-ומתן ה-WebRTC."""
+    """The frontend calls this after the browser generates a SDP answer, to complete the WebRTC negotiation."""
     try:
         await send_sdp_answer(request.stream_id, request.session_id, request.answer)
         return {"ok": True}
@@ -130,7 +130,7 @@ async def stream_sdp(request: StreamSdpRequest):
 
 @app.post("/stream/ice")
 async def stream_ice(request: StreamIceRequest):
-    """הפרונט קורא לזה בכל ICE candidate שהדפדפן מגלה (חלק ממו״מ ה-WebRTC)."""
+    """The frontend calls this for every ICE candidate discovered by the browser (part of the WebRTC negotiation)."""
     try:
         await send_ice_candidate(
             request.stream_id, request.session_id,
@@ -144,9 +144,9 @@ async def stream_ice(request: StreamIceRequest):
 @app.post("/stream/send-text", response_model=StreamSendTextResponse)
 async def stream_send_text(request: StreamSendTextRequest):
     """
-    נקרא בכל שאלה של המשתמש.
-    עושה RAG+LLM ואז שולח את התשובה ל-stream שכבר פתוח -
-    D-ID משדר את הוידאו ישירות דרך ה-WebRTC הקיים, בלי לחכות לקובץ שלם.
+    Called for each question from the user.
+    Executes the RAG+LLM flow and then sends the response to the open stream -
+    D-ID streams the video directly via the established WebRTC connection without waiting for the full file.
     """
     try:
         response_text, sources = _run_rag_and_llm(
@@ -163,9 +163,9 @@ async def stream_send_text(request: StreamSendTextRequest):
 @app.post("/stream/speak")
 async def stream_speak(request: StreamSpeakRequest):
     """
-    משמש לטקסט קבוע כמו ברכת פתיחה - שולח ישירות ל-D-ID בלי RAG+LLM.
-    ה-warm-up הזה חשוב: בלי זה, ה-<video> נשאר שחור עד לשאלה הראשונה
-    כי D-ID לא שולח פריימים לפני שביקשו ממנו "לדבר" משהו.
+    Used for static text such as a welcome greeting - sends text directly to D-ID without RAG+LLM.
+    This warm-up is important: without it, the video element remains black until the first query
+    because D-ID does not send frames before being requested to "speak" something.
     """
     try:
         await send_stream_text(request.stream_id, request.session_id, request.text, language=request.language)
@@ -176,7 +176,7 @@ async def stream_speak(request: StreamSpeakRequest):
 
 @app.post("/stream/close")
 async def stream_close(request: StreamCloseRequest):
-    """נקרא כשהמשתמש סוגר את הצ'אט, או אוטומטית אחרי חוסר פעילות - כדי לא לבזבז דקות."""
+    """Called when the user closes the chat, or automatically after inactivity - to save D-ID credit minutes."""
     try:
         await close_stream(request.stream_id, request.session_id)
         return {"ok": True}
