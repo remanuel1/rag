@@ -5,12 +5,6 @@
 
 Minimal retrieval-augmented generation (RAG) service built with FastAPI, LangChain, OpenAI, and PostgreSQL + pgvector, integrated with D-ID's WebRTC Streams API to stream real-time speaking avatar responses.
 
-## Demo / Preview
-
-<img width="537" height="760" alt="image" src="https://github.com/user-attachments/assets/fe9df7af-b4f3-4b19-bda5-c7847f3a05aa" />
-
-*Note: Save your interface screenshot under `assets/screenshot.png` in the repository to display your live preview here.*
-
 ---
 
 ## Key Features
@@ -183,3 +177,7 @@ You can query the RAG system directly from the terminal without running the web 
 python query_data.py "Tell me about Renana's experience with Python."
 ```
 Ensure your database is populated and your `.env` contains the required OpenAI credentials.
+
+## Demo / Preview
+
+<img width="537" height="760" alt="image" src="https://github.com/user-attachments/assets/fe9df7af-b4f3-4b19-bda5-c7847f3a05aa" />
