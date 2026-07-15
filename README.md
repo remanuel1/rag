@@ -7,7 +7,7 @@ Minimal retrieval-augmented generation (RAG) service built with FastAPI, LangCha
 
 ## Demo / Preview
 
-![Avatar Interaction Screenshot](assets/screenshot.png)
+<img width="537" height="760" alt="image" src="https://github.com/user-attachments/assets/fe9df7af-b4f3-4b19-bda5-c7847f3a05aa" />
 
 *Note: Save your interface screenshot under `assets/screenshot.png` in the repository to display your live preview here.*
 
