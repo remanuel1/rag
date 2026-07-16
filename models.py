@@ -43,7 +43,7 @@ class StreamSendTextRequest(BaseModel):
     k: int = 6
     min_relevance: float = 0.5
     context_tag: Optional[str] = None
-    language: str = "Hebrew"
+    language: str = "English"
 
 
 class StreamSendTextResponse(BaseModel):
