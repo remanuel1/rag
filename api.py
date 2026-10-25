@@ -1,6 +1,5 @@
 import json
-from fastapi import FastAPI, HTTPException
-from fastapi import File, Query, UploadFile
+from fastapi import FastAPI, HTTPException, File, Query, UploadFile, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from langchain.schema import Document
 from langchain_openai import OpenAIEmbeddings, ChatOpenAI
@@ -15,12 +14,14 @@ from models import (
     IndexResponse,
     StreamStartResponse, StreamSdpRequest, StreamIceRequest,
     StreamSendTextRequest, StreamSendTextResponse, StreamCloseRequest, StreamSpeakRequest,
+    ChatLogsResponse,
 )
 from did_service import (
     create_stream, send_sdp_answer, send_ice_candidate, send_stream_text, close_stream,
 )
 from query_data import SYSTEM_TEMPLATE, PROMPT_TEMPLATE
 from vector_store import create_vector_store, get_collection_name, extract_content_from_bytes
+from chat_logger import ensure_chat_logs_table, save_chat_log, get_recent_chat_logs
 
 
 app = FastAPI(title="RAG API")
@@ -31,6 +32,12 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.on_event("startup")
+def on_startup():
+    """Ensure required database tables and indexes exist on application startup."""
+    ensure_chat_logs_table()
 
 
 @app.post("/index", response_model=IndexResponse)
@@ -142,15 +149,26 @@ async def stream_ice(request: StreamIceRequest):
 
 
 @app.post("/stream/send-text", response_model=StreamSendTextResponse)
-async def stream_send_text(request: StreamSendTextRequest):
+async def stream_send_text(request: StreamSendTextRequest, background_tasks: BackgroundTasks):
     """
     Called for each question from the user.
     Executes the RAG+LLM flow and then sends the response to the open stream -
     D-ID streams the video directly via the established WebRTC connection without waiting for the full file.
+    Saves the question, answer, and metadata to PostgreSQL in the background.
     """
     try:
         response_text, sources = _run_rag_and_llm(
             request.query_text, request.k, request.min_relevance, request.context_tag, request.language,
+        )
+        # Asynchronously log the interaction to PostgreSQL without delaying stream delivery
+        background_tasks.add_task(
+            save_chat_log,
+            session_id=request.session_id,
+            stream_id=request.stream_id,
+            question=request.query_text,
+            answer=response_text,
+            sources=sources,
+            language=request.language,
         )
         await send_stream_text(request.stream_id, request.session_id, response_text, language=request.language)
         return StreamSendTextResponse(response=response_text, sources=sources)
@@ -180,5 +198,21 @@ async def stream_close(request: StreamCloseRequest):
     try:
         await close_stream(request.stream_id, request.session_id)
         return {"ok": True}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+# ---------------------------------------------------------------------------
+# Analytics & Logs API
+# ---------------------------------------------------------------------------
+
+@app.get("/chat/logs", response_model=ChatLogsResponse)
+def get_chat_logs(limit: int = Query(default=50, ge=1, le=500)):
+    """
+    Retrieves recent chat logs (questions asked by users and answers given).
+    """
+    try:
+        logs = get_recent_chat_logs(limit=limit)
+        return ChatLogsResponse(total=len(logs), logs=logs)
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))

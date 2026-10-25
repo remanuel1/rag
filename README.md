@@ -11,6 +11,7 @@ Minimal retrieval-augmented generation (RAG) service built with FastAPI, LangCha
 
 - **D-ID WebRTC Integration:** Establishes live peer-to-peer video streams of a speaking avatar.
 - **RAG-Powered Answers:** Combines PGVector semantic similarity search with OpenAI's `gpt-4o-mini` to answer queries about Renana's background.
+- **Query Analytics & Logging:** Automatically logs user questions, responses, session IDs, and sources in PostgreSQL.
 - **On-the-fly Ingestion:** Upload PDF or text documents via the `/index` endpoint to expand the knowledge base.
 - **In-Memory/Script Ingestion:** Scripted bulk document loading from `data/books`.
 - **Stateless Streaming Control:** Standard WebRTC handshake handling (SDP and ICE candidates) through FastAPI endpoints.
@@ -19,14 +20,15 @@ Minimal retrieval-augmented generation (RAG) service built with FastAPI, LangCha
 
 ## Project Structure
 
-- `api.py`: FastAPI application containing document ingestion and D-ID WebRTC streaming endpoints.
+- `api.py`: FastAPI application containing document ingestion, D-ID WebRTC streaming, and query log endpoints.
+- `chat_logger.py`: PostgreSQL interaction module for logging and retrieving user questions and answers.
 - `did_service.py`: Service wrapper using `httpx` to negotiate connections and speak commands with the D-ID API.
 - `models.py`: Pydantic data models representing requests and responses.
 - `vector_store.py`: Postgres connection helpers, PGVector collection configuration, and file parser (text/PDF).
 - `create_database.py`: Script to parse and index Markdown files inside `data/books/` to the database.
 - `query_data.py`: CLI testing script to execute similarity search + LLM generation directly.
 - `docker-compose.yml`: Local setup for running the FastAPI application alongside a PostgreSQL container with `pgvector`.
-- `init.sql`: Automatically initializes the PostgreSQL database with the `vector` extension.
+- `init.sql`: Automatically initializes the PostgreSQL database with the `vector` extension and `chat_logs` table.
 
 ---
 
@@ -99,7 +101,7 @@ Submits WebRTC ICE candidates discovered by the browser to D-ID.
   ```
 
 #### `POST /stream/send-text`
-Accepts a user question, retrieves relevant context from the database (RAG), runs the LLM, and instructs D-ID to speak the answer dynamically over the active WebRTC stream.
+Accepts a user question, retrieves relevant context from the database (RAG), runs the LLM, instructs D-ID to speak the answer dynamically over the active WebRTC stream, and logs the question/answer to PostgreSQL.
 - **Request Body:**
   ```json
   {
@@ -135,6 +137,13 @@ Closes the active D-ID stream session to save API usage minutes.
     "session_id": "str"
   }
   ```
+
+### 3. Analytics & Logs Endpoint
+#### `GET /chat/logs`
+Fetches recent conversation history recorded in the PostgreSQL database.
+- **Query Parameters:**
+  - `limit` *(optional, default 50)*: Number of recent questions to retrieve.
+- **Response:** List of logged questions, answers, sources, timestamps, and session IDs.
 
 ---
 

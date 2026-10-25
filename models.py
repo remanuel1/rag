@@ -62,3 +62,23 @@ class StreamSpeakRequest(BaseModel):
     session_id: str
     text: str
     language: str = "English"
+
+
+# ---------------------------------------------------------------------------
+# Models for Chat Logs
+# ---------------------------------------------------------------------------
+
+class ChatLogItem(BaseModel):
+    id: int
+    session_id: Optional[str] = None
+    stream_id: Optional[str] = None
+    question: str
+    answer: str
+    sources: list[str] = []
+    language: str = "English"
+    created_at: Optional[str] = None
+
+
+class ChatLogsResponse(BaseModel):
+    total: int
+    logs: list[ChatLogItem]
