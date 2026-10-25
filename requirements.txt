@@ -3,6 +3,7 @@ langchain==0.2.2
 langchain-community==0.2.3
 langchain-openai==0.1.8 # For embeddings
 langchain-postgres==0.0.9
+greenlet>=3.0.0
 unstructured==0.14.4 # Document loading
 unstructured[md]
 psycopg[binary]==3.2.9
@@ -13,4 +14,4 @@ pytest==8.3.5
 fastapi
 uvicorn[standard]
 python-multipart
-
+pypdf
